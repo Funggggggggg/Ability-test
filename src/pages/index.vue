@@ -30,11 +30,13 @@
         <v-sheet height="600">
           <v-calendar
             ref="calendar"
-            v-model="today"
+            v-model="value"
             :attributes="attrs"
             color=""
             :events="events"
             type="month"
+            :view-mode="type"
+            :weekdays="weekday"
           />
         </v-sheet>
       </v-col>
@@ -59,8 +61,8 @@
   // 日期與分類資料
   const type = ref('month')
   const types = ref(['month', 'week', 'day'])
-
-  // const value = ref([new Date()])
+  const weekday = ref([0, 1, 2, 3, 4, 5, 6])
+  const value = ref([new Date()])
   const events = ref([])
   const colors = ref(['blue', 'indigo', 'deep-purple', 'cyan', 'green', 'orange', 'grey darken-1'])
   const titles = ref(['生技醫藥', '資訊安全', '國際金融', '數位資產', '人工智慧'])
@@ -73,6 +75,7 @@
     return Math.floor((b - a + 1) * Math.random()) + a
   }
 
+  // FIXME 新聞不用有時間的計算
   const getEvents = ({ start, end }) => {
     const eventList = []
 
@@ -112,14 +115,6 @@
     })
   })
 
-  // 當前日期
-  const attrs = ref([
-    {
-      highlight: true,
-      dates: new Date(),
-    },
-  ])
-
 </script>
 
 <style scoped>
@@ -133,4 +128,4 @@
       login: false
       admin: false
       title: '首頁'
-      </route>
+</route>
