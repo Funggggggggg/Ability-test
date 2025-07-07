@@ -2,10 +2,36 @@
   <v-container>
     <div class="ma-8">
       <div class="text-h4 text-lg-h3 d-flex justify-center"> 良知新聞行事曆 </div>
-      <v-row>
+      <v-row class="mt-4">
         <v-col>
-          <div> 昨日新聞測試 {{ formatDate(yesterday) }}</div>
+          <v-card
+            class="mx-auto"
+            :subtitle="newsSubtitle"
+            width="400"
+          >
+            <template #title>
+              <span class="font-weight-black d-flex justify-center">昨日新聞測試 {{ formatDate(yesterday) }}</span>
+            </template>
+
+            <v-card-text class="bg-surface-light pt-4">
+              <div v-if="dailyNews.length > 0">
+                <div v-for="news in dailyNews" :key="news.id" class="mb-2">
+                  <strong>{{ news.title }}</strong>
+                  <p class="text-caption">{{ news.content }}</p>
+                </div>
+                <div class="text-xs text-grey-600 mt-1">
+                  <span>發布日期: {{ news.post_date }}</span>
+                  <span class="ml-2"> {{ news.id }}</span>
+                  <span class="ml-2"> {{ news.keyword_group_id }}</span>
+                </div>
+              </div>
+              <div v-else>
+                沒有找到昨日新聞
+              </div>
+            </v-card-text>
+          </v-card>
         </v-col>
+
         <!-- 分類區 -->
         <v-col class="d-flex justify-center mt-10" cols="12">
           <v-btn
@@ -22,38 +48,23 @@
         </v-col>
       </v-row>
     </div>
-    <!-- 行事曆區 -->
+
+    <!-- 行事曆區 - 暫時註解掉 -->
+    <!--
     <v-row class="">
       <v-col>
-        <v-sheet
-          class="d-flex justify-center"
-          height="54"
-          tile
-          variant="flat"
-        >
-          <v-select
-            v-model="type"
-            class="ma-2"
-            density="compact"
-            hide-details
-            :items="types"
-            label="View Mode"
-            variant="outlined"
-          />
-        </v-sheet>
         <v-sheet height="600">
           <v-calendar
             ref="calendar"
             v-model="value"
             :events="events"
-            type="month"
             :view-mode="type"
-            :weekdays="weekday"
             @click:event="handleEventClick"
           />
         </v-sheet>
       </v-col>
     </v-row>
+    -->
   </v-container>
 </template>
 
@@ -62,30 +73,25 @@
   import { computed, onMounted, ref, watch } from 'vue'
   import { useDate } from 'vuetify'
 
-  // 日期與分類資料
-  const type = ref('month')
-  const types = ref(['month', 'week', 'day'])
-  const weekday = ref([0, 1, 2, 3, 4, 5, 6])
-  const value = ref([new Date()])
-  const events = ref([])
-  const colors = ref(['blue', 'indigo', 'deep-purple', 'cyan', 'green', 'orange', 'grey darken-1'])
+  // 🔥 測試用基本變數
+  const category = ref('全部')
+  const categories = ref(['全部', '生技醫藥', '資訊安全', '國際金融', '數位資產', '人工智慧'])
 
-  const category = ref('全部') // 分類變數，預設為'全部'
-  const categories = ref(['全部', '生技醫藥', '資訊安全', '國際金融', '數位資產', '人工智慧']) // 分類選項
+  // 🔥 測試用：昨日新聞變數
+  const newsSubtitle = ref('載入中...')
+  const dailyNews = ref([])
 
-  // 新增：昨天的日期測試
+  // 🔥 昨天的日期
   const yesterday = computed(() => {
     const date = new Date()
     date.setDate(date.getDate() - 1)
     return date
   })
 
-  // API 設定
+  // 🔥 API 設定
   const apiUrl = 'https://eunomics.net/get_post'
 
-  //  分類對應的 keyword_group_id
   const categoryMapping = {
-    // 全部: 0, =>「全部」的對應，API 不支援
     生技醫藥: 1,
     資訊安全: 2,
     國際金融: 3,
@@ -93,132 +99,169 @@
     人工智慧: 5,
   }
 
-  // 取得日期適配器
-  const adapter = useDate()
-
-  // API 相關方法
-  const fetchNewsData = async (keywordGroupId, date) => {
-    //  async 函式 非同步呼叫 API
-    try {
-      // 準備 API 參數
-      const params = {
-        date: formatDate(date),
-      }
-      if (keywordGroupId) {
-        params.keyword_group_id = keywordGroupId
-      }
-
-      console.log(`哈哈呼叫 API: ${apiUrl}?keyword_group_id=${keywordGroupId}&date=${formatDate(date)}`)
-
-      // 發送請求
-      const response = await axios.get(apiUrl, { params })
-
-      console.log('API 回應:', response.data)
-      return response.data || []
-    } catch (error) {
-      if (error.code === 'ECONNABORTED') {
-        console.error('API 超時:', error.message)
-      } else if (error.response) {
-        console.error('API 錯誤:', error.response.status, error.response.data)
-      } else {
-        console.error('API 錯誤:', error.message)
-      }
-      return []
-    }
-  }
-
-  // 日期格式化用 formatDate 函式轉成 YYYY-MM-DD。
+  // 🔥 日期格式化
   const formatDate = date => {
     return date.toISOString().split('T')[0]
   }
 
-  // 從 API 資料生成事件
-  const generateEventsFromAPI = async ({ start, end }) => {
-    console.log('=== 開始生成事件 ===')
-    const eventList = []
-    const startDate = new Date(start)
-    const endDate = new Date(end)
+  // 🔥 單次 API 呼叫（僅用於昨日新聞測試）
+  const fetchSingleNews = async (keywordGroupId, date) => {
+    if (!keywordGroupId) return []
 
-    console.log('日期範圍:', formatDate(startDate), '到', formatDate(endDate))
-    console.log('當前分類:', category.value)
+    try {
+      const params = {
+        date: formatDate(date),
+        keyword_group_id: keywordGroupId,
+      }
 
-    // 遍歷日期範圍
-    for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-      const currentDate = new Date(date)
+      console.log(`📰 測試 API: ${apiUrl}?keyword_group_id=${keywordGroupId}&date=${formatDate(date)}`)
 
-      // 根據當前選擇的分類取得資料
-      const keywordGroupId = categoryMapping[category.value]// 修正：定義 keywordGroupId
-      const newsData = await fetchNewsData(keywordGroupId, currentDate)
+      const response = await axios.get(apiUrl, { params })
 
-      // 將 API 資料轉換為事件
+      console.log('✅ API 回應:', response.data)
+      return response.data || []
+    } catch (error) {
+      console.error('❌ API 錯誤:', error.message)
+      return []
+    }
+  }
+
+  // 🔥 載入昨日新聞
+  const loadYesterdayNews = async (categoryName = '生技醫藥') => {
+    const keywordGroupId = categoryMapping[categoryName]
+
+    if (!keywordGroupId) {
+      newsSubtitle.value = '請選擇有效分類'
+      dailyNews.value = []
+      return
+    }
+
+    try {
+      newsSubtitle.value = '載入中...'
+      const newsData = await fetchSingleNews(keywordGroupId, yesterday.value)
+
       if (newsData && newsData.length > 0) {
-        for (const [index, news] of newsData.entries()) {
-          eventList.push({
-            id: news.id || `${formatDate(currentDate)}-${index}`,
-            title: news.title || category.value,
-            start: currentDate,
-            end: currentDate,
-            color: colors.value[index % colors.value.length],
-            allDay: true,
-            url: news.url || news.link, // 新聞連結
-            content: news.content || news.description,
-            category: category.value,
-          })
-        }
+        dailyNews.value = newsData
+        newsSubtitle.value = `✅ 找到 ${newsData.length} 筆 ${categoryName} 昨日新聞`
+      } else {
+        dailyNews.value = []
+        newsSubtitle.value = `${categoryName} 昨日暫無新聞`
+      }
+    } catch {
+      newsSubtitle.value = '❌ 載入失敗'
+      dailyNews.value = []
+    }
+  }
+
+  // 🔥 監聽分類變化
+  watch(category, async newCategory => {
+    console.log('🔄 分類變更為:', newCategory)
+
+    if (newCategory === '全部') {
+      newsSubtitle.value = '請選擇特定分類'
+      dailyNews.value = []
+    } else {
+      await loadYesterdayNews(newCategory)
+    }
+  })
+
+  // 🔥 頁面載入
+  onMounted(async () => {
+    console.log('🚀 開始測試 API')
+    await loadYesterdayNews('生技醫藥') // 預設載入生技醫藥
+  })
+
+// 註解掉的程式碼區域
+/*
+// 以下程式碼暫時註解，避免過載問題
+
+const type = ref('month')
+const value = ref([new Date()])
+const events = ref([])
+const colors = ref(['blue', 'indigo', 'deep-purple', 'cyan', 'green', 'orange', 'grey darken-1'])
+const adapter = useDate()
+
+const fetchNewsData = async (keywordGroupId, date) => {
+  try {
+    const params = {
+      date: formatDate(date),
+    }
+    if (keywordGroupId) {
+      params.keyword_group_id = keywordGroupId
+    }
+
+    console.log(`哈哈呼叫 API: ${apiUrl}?keyword_group_id=${keywordGroupId}&date=${formatDate(date)}`)
+
+    // const response = await axios.get(apiUrl, { params })
+
+    console.log('API 回應:', response.data)
+    return response.data || []
+  } catch (error) {
+    console.error('API 錯誤:', error.message)
+    return []
+  }
+}
+
+const generateEventsFromAPI = async ({ start, end }) => {
+  console.log('=== 開始生成事件 ===')
+  const eventList = []
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+
+  console.log('日期範圍:', formatDate(startDate), '到', formatDate(endDate))
+  console.log('當前分類:', category.value)
+
+  for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+    const currentDate = new Date(date)
+    const keywordGroupId = categoryMapping[category.value]
+    const newsData = await fetchNewsData(keywordGroupId, currentDate)
+
+    if (newsData && newsData.length > 0) {
+      for (const [index, news] of newsData.entries()) {
+        eventList.push({
+          id: news.id || `${formatDate(currentDate)}-${index}`,
+          title: news.title || category.value,
+          start: currentDate,
+          end: currentDate,
+          color: colors.value[index % colors.value.length],
+          allDay: true,
+          url: news.url || news.link,
+          content: news.content || news.description,
+          category: category.value,
+        })
       }
     }
-
-    events.value = eventList
   }
 
-  // 處理事件點擊
-  const handleEventClick = event => {
-    if (event.url) {
-      // 開啟新分頁跳轉到新聞內容
-      window.open(event.url, '_blank')
-    } else {
-      // 如果沒有 URL，可以顯示詳細資訊或其他處理
-      console.log('事件詳情:', event)
-    }
+  events.value = eventList
+}
+
+const handleEventClick = event => {
+  if (event.url) {
+    window.open(event.url, '_blank')
+  } else {
+    console.log('事件詳情:', event)
   }
+}
 
-  // 監聽分類變化，重新載入資料
-  watch(category, async () => {
+watch(value, async newValue => {
+  if (newValue && newValue[0]) {
     await generateEventsFromAPI({
-      start: adapter.startOfDay(adapter.startOfMonth(value.value[0] || new Date())),
-      end: adapter.endOfDay(adapter.endOfMonth(value.value[0] || new Date())),
+      start: adapter.startOfDay(adapter.startOfMonth(newValue[0])),
+      end: adapter.endOfDay(adapter.endOfMonth(newValue[0])),
     })
-  })
-
-  // 監聽日期變化，重新載入資料
-  watch(value, async newValue => {
-    if (newValue && newValue[0]) {
-      await generateEventsFromAPI({
-        start: adapter.startOfDay(adapter.startOfMonth(newValue[0])),
-        end: adapter.endOfDay(adapter.endOfMonth(newValue[0])),
-      })
-    }
-  })
-
-  // 生命週期鉤子
-  onMounted(async () => {
-    await generateEventsFromAPI({
-      start: adapter.startOfDay(adapter.startOfMonth(new Date())),
-      end: adapter.endOfDay(adapter.endOfMonth(new Date())),
-    })
-  })
+  }
+})
+*/
 
 </script>
 
 <style scoped>
-
 </style>
 
-<route lang="
-      yaml"
-    >
-      meta:
-      login: false
-      admin: false
-      title: '首頁'
+<route lang="yaml">
+meta:
+  login: false
+  admin: false
+  title: '首頁'
 </route>
