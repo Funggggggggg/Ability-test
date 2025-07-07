@@ -18,11 +18,11 @@
                 <div v-for="news in dailyNews" :key="news.id" class="mb-2">
                   <strong>{{ news.title }}</strong>
                   <p class="text-caption">{{ news.content }}</p>
-                </div>
-                <div class="text-xs text-grey-600 mt-1">
-                  <span>發布日期: {{ news.post_date }}</span>
-                  <span class="ml-2"> {{ news.id }}</span>
-                  <span class="ml-2"> {{ news.keyword_group_id }}</span>
+                  <div class="text-xs text-grey-600 mt-1">
+                    <span>發布日期: {{ news.post_date }}</span>
+                    <span class="ml-2">ID: {{ news.id }}</span>
+                    <span class="ml-2">分類ID: {{ news.keyword_group_id }}</span>
+                  </div>
                 </div>
               </div>
               <div v-else>
@@ -77,19 +77,19 @@
   const category = ref('全部')
   const categories = ref(['全部', '生技醫藥', '資訊安全', '國際金融', '數位資產', '人工智慧'])
 
-  // 🔥 測試用：昨日新聞變數
+  // 測試用：昨日新聞變數
   const newsSubtitle = ref('載入中...')
   const dailyNews = ref([])
 
-  // 🔥 昨天的日期
+  // 昨天的日期
   const yesterday = computed(() => {
     const date = new Date()
     date.setDate(date.getDate() - 1)
     return date
   })
 
-  // 🔥 API 設定
-  const apiUrl = 'https://eunomics.net/get_post'
+  // API 設定
+  const apiUrl = '/api/get_post'
 
   const categoryMapping = {
     生技醫藥: 1,
@@ -99,12 +99,12 @@
     人工智慧: 5,
   }
 
-  // 🔥 日期格式化
+  // 日期格式化
   const formatDate = date => {
     return date.toISOString().split('T')[0]
   }
 
-  // 🔥 單次 API 呼叫（僅用於昨日新聞測試）
+  // 單次 API 呼叫（僅用於昨日新聞測試）
   const fetchSingleNews = async (keywordGroupId, date) => {
     if (!keywordGroupId) return []
 
@@ -119,14 +119,17 @@
       const response = await axios.get(apiUrl, { params })
 
       console.log('✅ API 回應:', response.data)
-      return response.data || []
+
+      // 檢查 API 回應格式
+      if (!response.data) return []
+      return Array.isArray(response.data) ? response.data : [response.data]
     } catch (error) {
       console.error('❌ API 錯誤:', error.message)
       return []
     }
   }
 
-  // 🔥 載入昨日新聞
+  // 載入昨日新聞
   const loadYesterdayNews = async (categoryName = '生技醫藥') => {
     const keywordGroupId = categoryMapping[categoryName]
 

@@ -74,8 +74,16 @@ export default defineConfig({
       '.vue',
     ],
   },
+  // 讓前端讀到後端資料
   server: {
-    port: 3000,
+    // port: 3000,
+    proxy: {
+      '/api': {
+        target: 'https://eunomics.net',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api/, ''),
+      },
+    },
   },
   css: {
     preprocessorOptions: {
