@@ -22,7 +22,7 @@
             <v-card-text class="bg-surface-light pt-4">
               <div v-if="dailyNews.length > 0">
                 <div v-for="news in dailyNews" :key="news.id" class="mb-2">
-                  <P class="text-h6 mb-2"><strong>{{ news.title }}</strong></P>
+                  <p class="text-h6 mb-2"><strong>{{ news.title }}</strong></p>
                   <p class="text-caption mb-2">
                     {{ news.content && news.content.length > 100
                       ? news.content.slice(0, 100) + '...'
@@ -59,6 +59,20 @@
       </v-row>
     </div>
 
+    <!-- 🔥 加入除錯：顯示 events 陣列狀態 -->
+    <!-- <v-row class="mt-4">
+      <v-col>
+        <v-card>
+          <v-card-title>除錯資訊</v-card-title>
+          <v-card-text>
+            <div>當前分類: {{ category }}</div>
+            <div>events 長度: {{ events.length }}</div>
+            <div>events 內容: {{ events }}</div>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row> -->
+
     <!-- 行事曆區-->
     <v-row class="">
       <v-col>
@@ -68,12 +82,11 @@
             v-model="value"
             :events="events"
             :view-mode="type"
-            @click:event="handleEventClick"
           />
+          <!-- @click:event="handleEventClick" -->
         </v-sheet>
       </v-col>
     </v-row>
-
   </v-container>
 </template>
 
@@ -83,7 +96,7 @@
   import { useDate } from 'vuetify'
 
   // 🔥 測試用基本變數
-  const category = ref('全部')
+  const category = ref('生技醫藥')
   const categories = ref(['全部', '生技醫藥', '資訊安全', '國際金融', '數位資產', '人工智慧'])
 
   // 測試用：昨日新聞變數
@@ -154,7 +167,7 @@
 
     try {
       newsSubtitle.value = ''
-      const newsData = await fetchSingleNews(keywordGroupId, yesterday.value)
+      const newsData = await fetchSingleDayNews(keywordGroupId, yesterday.value)
 
       if (newsData && newsData.length > 0) {
         dailyNews.value = newsData
@@ -169,27 +182,33 @@
     }
   }
 
-  // 監聽分類變化
-  watch(category, async newCategory => {
-    console.log('🔄 分類變更為:', newCategory)
-
-    if (newCategory === '全部') {
-      newsSubtitle.value = '請選擇特定分類'
-      dailyNews.value = []
-    } else {
-      await loadYesterdayNews(newCategory)
-    }
-  })
-
   // 頁面載入
   onMounted(async () => {
     console.log('🚀 開始測試 API')
+    // 🔥 強制設定分類
+    category.value = '生技醫藥'
+
     await loadYesterdayNews('生技醫藥') // 預設載入生技醫藥
+    console.log('📅 onMounted - 準備載入行事曆')
+    console.log('📅 category.value:', category.value)
+    console.log('📅 value.value:', value.value)
+
+    // 🔥 強制載入行事曆
+    if (category.value !== '全部') {
+      console.log('📅 onMounted - 開始載入行事曆')
+      await generateMonthlyEvents({
+        start: adapter.startOfDay(adapter.startOfMonth(new Date())),
+        end: adapter.endOfDay(adapter.endOfMonth(new Date())),
+      })
+    }
   })
 
   // 新增：按月載入行事曆資料 (避免過載)
   const generateMonthlyEvents = async ({ start, end }) => {
-    console.log('開始載入月度行事曆')
+    console.log('📅 generateMonthlyEvents 被呼叫')
+    console.log('📅 參數 start:', start)
+    console.log('📅 參數 end:', end)
+    console.log('📅 category.value:', category.value)
 
     // 如果沒選擇特定分類，不載入資料
     if (category.value === '全部') {
@@ -207,14 +226,18 @@
     console.log(`當前分類: ${category.value} (ID: ${keywordGroupId})`)
 
     // 🔥 重要：限制載入天數，避免過載
-    const maxDays = 30 // 每次最多載入 30 天
+    const maxDays = 10 // 每次最多載入 30 天
     let dayCount = 0
 
-    for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+    for (let date = new Date(startDate); date <= endDate && dayCount < maxDays; date.setDate(date.getDate() + 1)) {
       const currentDate = new Date(date)
+
+      console.log(`📅 迴圈第 ${dayCount + 1} 天: ${formatDate(currentDate)}`)
 
       // 🔥 使用測試成功的 API 呼叫邏輯
       const newsData = await fetchSingleDayNews(keywordGroupId, currentDate)
+
+      console.log(`📅 API 回應:`, newsData)
 
       if (newsData && newsData.length > 0) {
         // 為每天的每則新聞建立事件
@@ -235,22 +258,23 @@
       } else {
         console.log(`⚪ ${formatDate(currentDate)}: 無新聞資料`)
       }
+      dayCount++
+      // 🔥 加入延遲避免 API 過載
+      await new Promise(resolve => setTimeout(resolve, 200)) // 延遲 200ms
     }
-    dayCount++
-
-    // 🔥 加入延遲避免 API 過載
-    await new Promise(resolve => setTimeout(resolve, 200)) // 延遲 200ms
+    events.value = eventList
+    console.log(`🎯 總共載入 ${eventList.length} 個事件`)
   }
 
   // 事件點擊處理
-  const handleEventClick = event => {
-    console.log('📰 點擊事件:', event)
-    // 可以在這裡顯示新聞詳情
-    alert(`新聞標題: ${event.title}\n發布日期: ${event.postDate}`)
-  }
+  // const handleEventClick = event => {
+  //   console.log('📰 點擊事件:', event)
+  //   // 可以在這裡顯示新聞詳情
+  //   alert(`新聞標題: ${event.title}\n發布日期: ${event.postDate}`)
+  // }
 
-  // 🔥 監聽日期變化：載入新月份的資料
-  watch(value, async newCategory => {
+  // 監聽分類變化
+  watch(category, async newCategory => {
     console.log('🔄 分類變更為:', newCategory)
 
     if (newCategory === '全部') {
@@ -259,16 +283,36 @@
       events.value = [] // 清空行事曆
     } else {
       // 更新新聞卡片
-      await loadYesterdayNews(newCategory[0])
+      await loadYesterdayNews(newCategory)
 
+      console.log('準備載入行事曆')
+      console.log('value.value:', value.value)
+      console.log('value.value[0]:', value.value[0])
       // 更新行事曆
       if (value.value && value.value[0]) {
+        console.log('📅 條件滿足，開始載入行事曆')
         await generateMonthlyEvents({
-          start: adapter.startOfDay(adapter.startOfMonth(newCategory[0])),
-          end: adapter.endOfDay(adapter.endOfMonth(newCategory[0])),
+          start: adapter.startOfDay(adapter.startOfMonth(value.value[0])),
+          end: adapter.endOfDay(adapter.endOfMonth(value.value[0])),
         })
+      } else {
+        console.log('❌ 條件不滿足，無法載入行事曆')
       }
     }
+  })
+
+  // 🔥 監聽日期變化：載入新月份的資料
+  watch(value, async newValue => {
+    console.log('📅 日期變更為:', newValue)
+
+    // 只有在選擇了特定分類時才載入行事曆資料
+    // if (newValue && newValue[0] && category.value !== '全部') {
+    //   console.log('📅 載入新月份資料')
+    //   await generateMonthlyEvents({
+    //     start: adapter.startOfDay(adapter.startOfMonth(newValue[0])),
+    //     end: adapter.endOfDay(adapter.endOfMonth(newValue[0])),
+    //   })
+    // }
   })
 
 </script>
