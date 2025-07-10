@@ -79,8 +79,31 @@
         </v-card-title>
 
         <v-card-text class="pa-4">
-          <h3>{{ selectedEvent?.title }}</h3>
-          <span>{{ selectedEvent?.content }}</span>
+          <!-- 標題 -->
+          <h3 class="mb-3">{{ selectedEvent?.title }}</h3>
+
+          <!-- 內容區域 -->
+          <div class="mb-3">
+            <h4 class="text-subtitle-1 mb-2" />
+
+            <!-- 載入中狀態 -->
+            <div v-if="!selectedEvent?.content" class="text-center py-4">
+              <v-progress-circular
+                class="mb-2"
+                color="primary"
+                indeterminate
+                size="24"
+              />
+              <p class="text-body-2 text-grey-600">載入內容中...</p>
+            </div>
+
+            <!-- 顯示內容 -->
+            <div v-else class="content-display">
+              <p class="text-body-1">{{ selectedEvent.content }}</p>
+            </div>
+          </div>
+
+          <!-- 發布日期 -->
           <p class="d-flex justify-end">發布日期：{{ selectedEvent?.postDate }}</p>
 
         </v-card-text>
@@ -445,7 +468,7 @@
   }
 
   // FIXME 點擊時才載入完整內容 => 原生 DOM 事件轉日曆事件 => 解構賦值
-  const handleEventClick = (_nativeEvent, eventWrapper) => {
+  const handleEventClick = async (_nativeEvent, eventWrapper) => {
     console.log('📰 點擊事件:', eventWrapper?.event)
 
     const event = eventWrapper?.event
@@ -456,85 +479,47 @@
     }
 
     console.log('✅ 成功取得事件:', event)
-    console.log('✅ 事件ID:', event.id)
-    console.log('✅ 事件標題:', event.title)
-    console.log('✅ 事件分類:', event.category)
+    // console.log('✅ 事件ID:', event.id)
+    // console.log('✅ 事件標題:', event.title)
+    // console.log('✅ 事件分類:', event.category)
 
     selectedEvent.value = event
     dialog.value = true
+
+    // 🔥 動態載入內容（如果還沒有的話）
+    if (event.content) {
+      console.log('✅ 已有內容，直接顯示')
+    } else {
+      console.log('🔍 開始動態載入新聞內容...')
+
+      try {
+        const keywordGroupId = categoryMapping[event.category]
+        const fullNews = await fetchSingleDayNews(keywordGroupId, event.start)
+        const newsDetail = fullNews.find(news => news.id === event.id)
+
+        // 🔥 直接更新 selectedEvent 的內容
+        if (newsDetail?.content) {
+          selectedEvent.value = {
+            ...selectedEvent.value,
+            content: newsDetail.content,
+          }
+          console.log('✅ 內容載入成功')
+        } else {
+          selectedEvent.value = {
+            ...selectedEvent.value,
+            content: '此新聞暫無詳細內容',
+          }
+          console.log('⚠️ 沒有找到新聞內容')
+        }
+      } catch (error) {
+        console.error('❌ 載入內容失敗:', error)
+        selectedEvent.value = {
+          ...selectedEvent.value,
+          content: '載入內容時發生錯誤，請稍後再試',
+        }
+      }
+    }
   }
-
-  //     try {
-  //       // 載入完整新聞內容
-  //       const keywordGroupId = categoryMapping[event.category]
-  //       const fullNews = await fetchSingleDayNews(keywordGroupId, event.start)
-
-  //       // 找到對應的新聞
-  //       const newsDetail = fullNews.find(news => news.id === event.id)
-
-  //       if (newsDetail && newsDetail.content) {
-  //         alert(`新聞標題: ${event.title}\n分類: ${event.category}\n發布日期: ${event.postDate}\n\n內容: ${newsDetail.content}`)
-  //       } else {
-  //         alert(`新聞標題: ${event.title}\n分類: ${event.category}\n發布日期: ${event.postDate}\n\n(無詳細內容)`)
-  //       }
-  //     } catch (error) {
-  //       console.error('載入新聞詳情失敗:', error)
-  //       alert(`新聞標題: ${event.title}\n分類: ${event.category}\n發布日期: ${event.postDate}\n\n(載入內容時發生錯誤)`)
-  //     }
-  //   } else {
-  //     alert(`新聞標題: ${event.title}\n分類: ${event.category}\n發布日期: ${event.postDate}`)
-  //   }
-
-  // 載入內容函數
-
-  // const loadNewsContent = async () => {
-  //   console.log('🔍 開始載入內容')
-  //   console.log('🔍 selectedEvent:', selectedEvent.value)
-
-  //   if (!selectedEvent.value) {
-  //     console.error('❌ selectedEvent 是空的')
-  //     return
-  //   }
-
-  //   console.log('🔍 事件分類:', selectedEvent.value.category)
-  //   console.log('🔍 事件日期:', selectedEvent.value.start)
-  //   console.log('🔍 事件ID:', selectedEvent.value.id)
-
-  //   loadingContent.value = true
-
-  //   try {
-  //     const keywordGroupId = categoryMapping[selectedEvent.value.category]
-  //     const fullNews = await fetchSingleDayNews(keywordGroupId, selectedEvent.value.start)
-  //     const newsDetail = fullNews.find(news => news.id === selectedEvent.value.id)
-
-  //     if (newsDetail) {
-  //       newsContent.value = newsDetail.content || '無內容'
-  //       console.log('✅ 內容載入成功:', newsContent.value.slice(0, 100))
-  //     } else {
-  //       newsContent.value = '找不到對應新聞'
-  //       console.log('❌ 找不到對應的新聞')
-  //     }
-
-  //     newsContent.value = newsDetail?.content || '無法載入新聞內容'
-  //   } catch (error) {
-  //     console.error('載入失敗:', error)
-  //     newsContent.value = '載入內容時發生錯誤'
-  //   } finally {
-  //     loadingContent.value = false
-  //   }
-  // }
-  // ====================
-  // 8. 監聽器
-  // ====================
-
-  // 載入昨日新聞
-
-  // 昨天的日期
-  // const yesterday = computed(() => {
-  //   const date = new Date()
-  //   date.setDate(date.getDate() - 1)
-  //   return date
-  // })
 
   // 監聽分類變化
   watch(selectedCategories, async () => {
