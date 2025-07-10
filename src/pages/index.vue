@@ -3,90 +3,49 @@
     <div class="ma-8">
       <div class="text-h4 text-lg-h3 d-flex justify-center"> 良知新聞行事曆 </div>
 
-      <!-- <v-col> -->
-      <!-- <v-card> -->
-      <!-- <template #title> -->
-      <!-- <span class="font-weight-black d-flex justify-center"> -->
-      <!-- {{ formatDate(yesterday) }} -->
-      <!-- 新聞焦點 -->
-      <!-- {{ dailyNews.length > 0
-                  ? dailyNews[0].title.slice(0, 30) + (dailyNews[0].title.length > 30 ? '...' : '')
-                  : (category === '全部' ? '請選擇分類': `載入${category}新聞中`) }} -->
-      <!-- </span> -->
-      <!-- </template> -->
-
-      <!-- <v-card-text class="bg-surface-light pt-4">
-              <div v-if="dailyNews.length > 0">
-                <div v-for="news in dailyNews" :key="news.id" class="mb-2">
-                  <p class="text-h6 mb-2"><strong>{{ news.title }}</strong></p>
-                  <p class="text-caption mb-2">
-                    {{ news.content && news.content.length > 100
-                      ? news.content.slice(0, 100) + '...'
-                      : news.content }}
-                  </p>
-                  <div class="text-xs text-grey-600 mt-1 d-flex flex-row-reverse">
-                    <span>發布日期: {{ news.post_date }}</span>
-                  </div>
-                </div>
-              </div>
-              <div v-else>
-                沒有找到昨日新聞
-              </div>
-            </v-card-text> -->
-      <!-- </v-card> -->
-      <!-- </v-col> -->
-
       <!-- 新聞分類篩選區 -->
       <v-row class="mt-4">
         <v-col class="d-flex justify-center mt-10" cols="12">
           <v-card>
-            <v-card-title>
-              <span> 新聞分類篩選</span>
-              <v-spacer />
-              <v-btn
-                size="small"
-                variant="text"
-                @click="toggleAllCategories"
-              >
-                {{ allSelected ? '取消全選' : '全選' }}
-              </v-btn>
+            <v-card-title class="mb-4 text-h5">
+              <div> 新聞分類 </div>
             </v-card-title>
             <v-card-text>
               <v-row>
                 <v-col
                   v-for="cate in availableCategories"
                   :key="cate"
+                  class="CategoriesStyle"
                   cols="12"
+                  lg="2"
                   md="4"
                   sm="6"
                 >
                   <v-checkbox
+                    v-if="cate === '全選/取消'"
+                    class="toggle-all-checkbox"
+                    color="primary"
+                    hide-details
+                    :label="allSelected ? '取消全選' : '全選'"
+                    :model-value="allSelected"
+                    readonly
+                    @click="toggleAllCategories"
+                  />
+                  <v-checkbox
+                    v-else
                     v-model="selectedCategories"
                     color="primary"
                     hide-details
                     :label="cate"
                     :value="cate"
-                  /></v-col>
+                  />
+                </v-col>
               </v-row>
             </v-card-text>
           </v-card>
         </v-col>
       </v-row>
     </div>
-
-    <!-- 除錯：顯示 events 陣列狀態 -->
-    <!-- <v-row class="mt-4">
-      <v-col>
-        <v-card>
-          <v-card-title>除錯資訊</v-card-title>
-          <v-card-text>
-            <div>當前分類: {{ category }}</div>
-            <div>events 長度: {{ events.length }}</div>
-            <div>events 內容: {{ events.slice(0, 3) }}</div>
-          </v-card-text>
-        </v-card>
-      </v-col>
-    </v-row> -->
 
     <!-- 行事曆區-->
     <v-row class="mt-4">
@@ -98,7 +57,9 @@
             class="d-flex align-center justify-center"
             contained
             style="background-color: rgba(255, 255, 255, 0.8);"
-          />
+          >
+            <span v-if="isLoading">載入中...</span>
+          </v-overlay>
           <v-calendar
             ref="calendar"
             v-model="value"
@@ -117,21 +78,11 @@
           <v-btn icon="mdi-close" size="small" variant="text" @click="dialog = false" />
         </v-card-title>
 
-        <v-card-text>
+        <v-card-text class="pa-4">
           <h3>{{ selectedEvent?.title }}</h3>
-          <span>{{ selectedEvent?.category }}</span>
-          <p>發布日期：{{ selectedEvent?.postDate }}</p>
+          <span>{{ selectedEvent?.content }}</span>
+          <p class="d-flex justify-end">發布日期：{{ selectedEvent?.postDate }}</p>
 
-          <!-- <div v-if="newsContent">
-            <p>{{ newsContent }}</p>
-          </div>
-          <div v-else-if="loadingContent" class="text-center py-4">
-            <v-progress-circular indeterminate size="24" />
-            <span class="ml-2">載入中...</span>
-          </div>
-          <div v-else>
-            <v-btn color="primary" @click="loadNewsContent">載入完整內容</v-btn>
-          </div> -->
         </v-card-text>
 
         <v-card-actions>
@@ -151,9 +102,15 @@
   // 1. 基本變數定義
   // ==================
 
+  // 載入控制變數（載入速度優化）
+  let currentLoadingId = 0
+  let debounceTimer = null
+
   // 分類
-  const availableCategories = ref(['生技醫藥', '資訊安全', '國際金融', '數位資產', '人工智慧'])
+  const categories = ref(['生技醫藥', '資訊安全', '國際金融', '數位資產', '人工智慧'])
   const selectedCategories = ref(['生技醫藥']) // 預設只選擇一個分類
+  // 顯示用的項目清單（包含按鈕）
+  const availableCategories = computed(() => ['全選/取消', ...categories.value])
 
   // 昨日新聞變數測試用
   const newsSubtitle = ref('載入中...')
@@ -176,7 +133,7 @@
   // ==================
 
   const allSelected = computed(() =>
-    selectedCategories.value.length === availableCategories.value.length,
+    selectedCategories.value.length === categories.value.length,
   )
   // ==================
   // 3. API 設定
@@ -330,6 +287,8 @@
   const isLoading = ref(false)// 載入狀態
 
   const generateMonthlyEvents = async ({ start, end }) => {
+    const loadingId = ++currentLoadingId // 速度優化
+    console.log(`🆔 開始載入 ID: ${loadingId}`)
     isLoading.value = true // 開始載入
 
     try {
@@ -398,6 +357,12 @@
         dates.map(date => fetchMultipleCategoryNewsTitle(date)),
       )
 
+      // 檢查是否還是最新請求 => 速度優化
+      if (loadingId !== currentLoadingId) {
+        console.log(`⚠️ 載入 ${loadingId} 已過期，捨棄結果`)
+        return
+      }
+
       // 處理結果
       const eventList = []
       for (const [index, result] of results.entries()) {
@@ -429,11 +394,20 @@
 
       events.value = eventList
       console.log(`🎯 並行載入完成: ${eventList.length} 個事件`)
+
+      if (loadingId === currentLoadingId) {
+        events.value = eventList
+        console.log(`🎯 載入完成: ${eventList.length} 事件 (ID: ${loadingId})`)
+      }
     } catch (error) {
       console.error('❌ 載入失敗:', error)
-      events.value = []
+      if (loadingId === currentLoadingId) {
+        events.value = []
+      }
     } finally {
-      isLoading.value = false // 🔥 加入這行：無論成功或失敗都關閉載入狀態
+      if (loadingId === currentLoadingId) {
+        isLoading.value = false // 關閉載入狀態
+      }
     }
   }
 
@@ -467,11 +441,11 @@
 
   // 全選/取消全選功能
   const toggleAllCategories = () => {
-    selectedCategories.value = allSelected.value ? [] : [...availableCategories.value]
+    selectedCategories.value = allSelected.value ? [] : [...categories.value]
   }
 
   // FIXME 點擊時才載入完整內容 => 原生 DOM 事件轉日曆事件 => 解構賦值
-  const handleEventClick = (nativeEvent, eventWrapper) => {
+  const handleEventClick = (_nativeEvent, eventWrapper) => {
     console.log('📰 點擊事件:', eventWrapper?.event)
 
     const event = eventWrapper?.event
@@ -566,14 +540,28 @@
   watch(selectedCategories, async () => {
     console.log('🔄 分類變更為:', selectedCategories.value)
 
-    if (selectedCategories.value.length > 0 && value.value && value.value[0]) {
-      await generateMonthlyEvents({
-        start: adapter.startOfDay(adapter.startOfMonth(value.value[0])),
-        end: adapter.endOfDay(adapter.endOfMonth(value.value[0])),
-      })
-    } else {
-      events.value = []
+    // 立即清除舊資料
+    events.value = []
+    isLoading.value = true
+
+    // 清除之前的防抖計時器
+    if (debounceTimer) {
+      clearTimeout(debounceTimer)
     }
+
+    // 🔥 防抖：300ms 後才真正載入
+    debounceTimer = setTimeout(async () => {
+      if (selectedCategories.value.length > 0 && value.value && value.value[0]) {
+        await generateMonthlyEvents({
+          start: adapter.startOfDay(adapter.startOfMonth(value.value[0])),
+          end: adapter.endOfDay(adapter.endOfMonth(value.value[0])),
+        })
+      } else {
+        // 🔥 沒有選擇分類時，清除載入狀態
+        isLoading.value = false
+        console.log('📅 沒有選擇分類，清除事件')
+      }
+    }, 300) // 300ms 防抖
   }, { deep: true })
 
   // 監聽日期變化，清除快取
@@ -624,9 +612,14 @@
 
 <style>
   .calenderStyle {
-    height: 600px;
     max-width: 100%;
     overflow: visible;
+  }
+  .CategoriesStyle{
+    white-space: nowrap !important;
+    min-width: 140px; /* 🔥 最小寬度 */
+    min-height: 48px; /* 🔥 最小高度 */
+    /* border: 1px solid #ccc; */
   }
 </style>
 
