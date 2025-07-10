@@ -92,11 +92,17 @@
     <v-row class="mt-4">
       <v-col>
         <v-sheet class="calenderStyle">
+          <!-- 🔥 新增：載入覆蓋層 -->
+          <v-overlay
+            v-model="isLoading"
+            class="d-flex align-center justify-center"
+            contained
+            style="background-color: rgba(255, 255, 255, 0.8);"
+          />
           <v-calendar
             ref="calendar"
             v-model="value"
             :events="events"
-            style="overflow: visible;"
             @click:event="handleEventClick"
           />
         </v-sheet>
@@ -193,6 +199,26 @@
   // 使用 toISOString() 會轉換為 UTC 時間 => 要加 8 小時
   // 台灣時間：2025-07-01 08:00 // UTC 時間：2025-07-01 00:00
   const formatDate = date => {
+    // 🔥 類型檢查和錯誤處理
+    if (!date) {
+      console.error('❌ formatDate: date 是 null 或 undefined')
+      return new Date().toISOString().split('T')[0]
+    }
+
+    // 🔥 如果已經是字串，直接返回（避免重複格式化）
+    if (typeof date === 'string') {
+      console.warn('⚠️ formatDate: 接收到字串，直接返回', date)
+      return date
+    }
+
+    // 🔥 確保是 Date 物件
+    const dateObj = date instanceof Date ? date : new Date(date)
+
+    if (Number.isNaN(dateObj.getTime())) {
+      console.error('❌ formatDate: 無效的日期', date)
+      return new Date().toISOString().split('T')[0]
+    }
+
     const year = date.getFullYear()
     const month = String(date.getMonth() + 1).padStart(2, '0')
     const day = String(date.getDate()).padStart(2, '0')
@@ -203,15 +229,29 @@
   // 5. API 相關函數
   // ===================
 
+  // 在 API 層面就過濾未來日期
   const fetchSingleDayNewsTitle = async (keywordGroupId, date) => {
     if (!keywordGroupId) return []
+
+    // 檢查是否為未來日期
+    const today = new Date()
+    const requestDate = new Date(date)
+
+    today.setHours(23, 59, 59, 999) // 設定為今天的 23:59:59
+    requestDate.setHours(0, 0, 0, 0)
+
+    if (requestDate > today) {
+      console.log(`⚠️ 跳過未來日期 API 請求: ${formatDate(date)}`)
+      return []
+    }
+
+    console.log(`📰 載入 ${formatDate(date)} 的 ${keywordGroupId} 新聞標題 (有效日期)`)
 
     try {
       const params = {
         date: formatDate(date),
         keyword_group_id: keywordGroupId,
       }
-      console.log(`📰 載入 ${formatDate(date)} 的 ${keywordGroupId} 新聞標題`)
 
       const response = await axios.get(apiUrl, { params })
 
@@ -222,11 +262,15 @@
       return newsData.map(news => ({
         id: news.id,
         title: news.title,
-        post_date: news.post_date,
-      // 不載入 content，節省載入時間
+        // post_date: news.post_date, // => 移除減少資料量和載入時間
+        // 不載入 content，節省載入時間
       }))
     } catch (error) {
-      console.error(`❌ ${formatDate(date)} API 錯誤:`, error.message)
+      if (error.response?.status === 404) {
+        console.log(`📅 ${formatDate(date)} 沒有 ${keywordGroupId} 分類的新聞`)
+      } else {
+        console.error(`❌ ${formatDate(date)} API 錯誤:`, error.message)
+      }
       return []
     }
   }
@@ -244,7 +288,7 @@
         const categorizedNews = newsData.map(news => ({
           id: news.id,
           title: news.title,
-          post_date: news.post_date,
+          // post_date: news.post_date,
           categoryName: categoryName,
           displayTitle: `[${categoryName}] ${news.title}`,
         }))
@@ -282,93 +326,115 @@
   // 6. 主要功能函數
   // ===================
 
-  // 按月載入行事曆資料 (避免過載)
+  // 按月載入行事曆資料
+  const isLoading = ref(false)// 載入狀態
+
   const generateMonthlyEvents = async ({ start, end }) => {
-    console.log('📅 載入行事曆（智能月份過濾）')
+    isLoading.value = true // 開始載入
 
-    if (selectedCategories.value.length === 0) {
+    try {
+      console.log('📅 載入行事曆（智能月份過濾）')
+
+      // 立即清除舊資料，提升使用者體驗
       events.value = []
-      return
-    }
 
-    const startDate = new Date(start)
-    const endDate = new Date(end)
-    const today = new Date() // 確保不載入未來日期
-
-    // 🔥 取得當前顯示的月份
-    const displayMonth = value.value[0] ? value.value[0].getMonth() : new Date().getMonth()
-    const displayYear = value.value[0] ? value.value[0].getFullYear() : new Date().getFullYear()
-    console.log(`📅 日曆範圍: ${formatDate(startDate)} 到 ${formatDate(endDate)}`)
-
-    // 建立日期陣列
-    const dates = []
-    const maxDays = 35
-
-    for (let date = new Date(startDate), dayCount = 0;
-         date <= endDate && dayCount < maxDays;
-         date.setDate(date.getDate() + 1), dayCount++) {
-           // 🔥 重要修正：建立純日期物件，避免時區問題
-           const currentDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-
-           // 🔥 條件：1. 屬於顯示的月份 2. 不是未來日期 3. API 有資料的日期
-           const isDisplayMonth = currentDate.getMonth() === displayMonth
-             && currentDate.getFullYear() === displayYear
-           const isNotFuture = currentDate <= today
-
-           if (isDisplayMonth && isNotFuture) {
-             dates.push(currentDate)
-             console.log(`📅 加入: ${formatDate(currentDate)}`)
-           } else if (currentDate > today) {
-             console.log(`⚠️ 跳過未來日期: ${formatDate(currentDate)}`)
-           } else if (!isDisplayMonth) {
-             console.log(`⚠️ 跳過其他月份: ${formatDate(currentDate)}`)
-           }
-         }
-
-    console.log(`📅 有效日期數量: ${dates.length}`)
-
-    // 如果沒有有效日期，直接返回
-    if (dates.length === 0) {
-      events.value = []
-      console.log('📅 沒有有效日期')
-      return
-    }
-
-    // 並行載入所有日期
-    const results = await Promise.allSettled(
-      dates.map(date => fetchMultipleCategoryNewsTitle(date)),
-    )
-
-    // 處理結果
-    const eventList = []
-    for (const [index, result] of results.entries()) {
-      if (result.status === 'fulfilled') {
-        const allDayNews = result.value
-        const currentDate = dates[index]
-
-        if (allDayNews.length > 0) {
-          for (const [newsIndex, news] of allDayNews.entries()) {
-            eventList.push({
-              id: news.id || `${formatDate(currentDate)}-${newsIndex}`,
-              title: news.displayTitle || news.title,
-              start: currentDate,
-              end: currentDate,
-              color: colors.value[categoryMapping[news.categoryName] % colors.value.length],
-              allDay: true,
-              category: news.categoryName,
-              postDate: news.post_date,
-              needsContent: true,
-            })
-          }
-          console.log(`✅ ${formatDate(currentDate)}: 找到 ${allDayNews.length} 則新聞`)
-        }
-      } else {
-        console.error(`❌ ${formatDate(dates[index])} 載入失敗:`, result.reason)
+      if (selectedCategories.value.length === 0) {
+        return
       }
-    }
 
-    events.value = eventList
-    console.log(`🎯 並行載入完成: ${eventList.length} 個事件`)
+      const startDate = new Date(start)
+      const endDate = new Date(end)
+      const today = new Date() // 確保不載入未來日期
+      today.setHours(23, 59, 59, 999) // 今天結束時間
+
+      console.log(`📅 今天日期: ${formatDate(today)}`)
+
+      // 🔥 取得當前顯示的月份
+      const displayMonth = value.value[0] ? value.value[0].getMonth() : new Date().getMonth()
+      const displayYear = value.value[0] ? value.value[0].getFullYear() : new Date().getFullYear()
+      console.log(`📅 載入月份: ${displayYear}-${displayMonth + 1}`)
+
+      // 建立日期陣列
+      const dates = []
+      const maxDays = 35
+
+      for (let date = new Date(startDate), dayCount = 0;
+           date <= endDate && dayCount < maxDays;
+           date.setDate(date.getDate() + 1), dayCount++) {
+             // 重要修正：建立純日期物件，避免時區問題
+             const currentDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+
+             // 條件：1. 屬於顯示的月份 2. 不是未來日期 3. API 有資料的日期
+             const isDisplayMonth = currentDate.getMonth() === displayMonth
+               && currentDate.getFullYear() === displayYear
+             const isNotFuture = currentDate <= today
+
+             if (isDisplayMonth && isNotFuture) {
+               dates.push(currentDate)
+               console.log(`📅 加入: ${formatDate(currentDate)}`) // ← 直接用 currentDate
+             } else if (!isDisplayMonth) {
+               console.log(`⚠️ 跳過其他月份: ${formatDate(currentDate)}`) // ← 直接用 currentDate
+             } else if (!isNotFuture) {
+               console.log(`⚠️ 跳過未來日期: ${formatDate(currentDate)} (今天: ${formatDate(today)})`) // ← 直接用 currentDate 和 today
+             }
+           }
+
+      console.log(`📅 有效日期數量: ${dates.length}`)
+
+      // 🔥 顯示所有有效日期
+      console.log(`📅 有效日期列表: ${dates.map(d => formatDate(d)).join(', ')}`)
+
+      // 如果沒有有效日期，直接返回
+      if (dates.length === 0) {
+        console.log('📅 本月沒有有效日期，不載入任何資料')
+        return
+      }
+
+      // 🔥 加入載入進度提示
+      console.log(`🚀 開始並行載入 ${dates.length} 天的新聞...`)
+
+      // 並行載入所有日期
+      const results = await Promise.allSettled(
+        dates.map(date => fetchMultipleCategoryNewsTitle(date)),
+      )
+
+      // 處理結果
+      const eventList = []
+      for (const [index, result] of results.entries()) {
+        if (result.status === 'fulfilled') {
+          const allDayNews = result.value
+          const currentDate = dates[index]
+
+          if (allDayNews.length > 0) {
+            for (const [newsIndex, news] of allDayNews.entries()) {
+              eventList.push({
+                id: news.id || `${formatDate(currentDate)}-${newsIndex}`,
+                title: news.displayTitle || news.title,
+                start: currentDate,
+                end: currentDate,
+                color: colors.value[categoryMapping[news.categoryName] % colors.value.length],
+                allDay: true,
+                category: news.categoryName,
+                postDate: formatDate(currentDate), // 使用已知的日期，不另外取
+                // postDate: news.post_date,
+                needsContent: true,
+              })
+            }
+            console.log(`✅ ${formatDate(currentDate)}: 找到 ${allDayNews.length} 則新聞`)
+          }
+        } else {
+          console.error(`❌ ${formatDate(dates[index])} 載入失敗:`, result.reason)
+        }
+      }
+
+      events.value = eventList
+      console.log(`🎯 並行載入完成: ${eventList.length} 個事件`)
+    } catch (error) {
+      console.error('❌ 載入失敗:', error)
+      events.value = []
+    } finally {
+      isLoading.value = false // 🔥 加入這行：無論成功或失敗都關閉載入狀態
+    }
   }
 
   const loadYesterdayNews = async (categoryName = '生技醫藥') => {
@@ -394,6 +460,7 @@
       dailyNews.value = []
     }
   }
+
   // =====================
   // 7. UI 互動函數
   // =====================
@@ -509,15 +576,24 @@
     }
   }, { deep: true })
 
-  // 監聽日期變化
+  // 監聽日期變化，清除快取
   watch(value, async newValue => {
     console.log('📅 日期變更為:', newValue)
 
-    if (newValue && newValue[0] && selectedCategories.value.length > 0) {
-      await generateMonthlyEvents({
-        start: adapter.startOfDay(adapter.startOfMonth(newValue[0])),
-        end: adapter.endOfDay(adapter.endOfMonth(newValue[0])),
-      })
+    // 月份變更時清除快取和舊資料
+    const newMonth = newValue?.[0]?.getMonth()
+    const newYear = newValue?.[0]?.getFullYear()
+
+    if (newMonth !== undefined && newYear !== undefined) {
+      console.log(`📅 切換到 ${newYear}-${newMonth + 1} 月`)
+      events.value = [] // 立即清除舊資料
+
+      if (selectedCategories.value.length > 0) {
+        await generateMonthlyEvents({
+          start: adapter.startOfDay(adapter.startOfMonth(newValue[0])),
+          end: adapter.endOfDay(adapter.endOfMonth(newValue[0])),
+        })
+      }
     }
   })
 
@@ -542,11 +618,6 @@
         end: adapter.endOfDay(adapter.endOfMonth(new Date())),
       })
     }
-    // 載入當月行事曆
-    // await generateMonthlyEvents({
-    //   start: adapter.startOfDay(adapter.startOfMonth(new Date())),
-    //   end: adapter.endOfDay(adapter.endOfMonth(new Date())),
-    // })
   })
 
 </script>
@@ -555,7 +626,7 @@
   .calenderStyle {
     height: 600px;
     max-width: 100%;
-    overflow: auto;
+    overflow: visible;
   }
 </style>
 
