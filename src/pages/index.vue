@@ -241,9 +241,8 @@
   // ===================
 
   // 按月載入行事曆資料 (避免過載)
-  // 🔥 修正：只保留一個正確的 generateMonthlyEvents
   const generateMonthlyEvents = async ({ start, end }) => {
-    console.log('📅 超級優化載入行事曆')
+    console.log('📅 載入行事曆（智能月份過濾）')
 
     if (selectedCategories.value.length === 0) {
       events.value = []
@@ -252,16 +251,45 @@
 
     const startDate = new Date(start)
     const endDate = new Date(end)
+    const today = new Date() // 確保不載入未來日期
+
+    // 🔥 取得當前顯示的月份
+    const displayMonth = value.value[0] ? value.value[0].getMonth() : new Date().getMonth()
+    const displayYear = value.value[0] ? value.value[0].getFullYear() : new Date().getFullYear()
+    console.log(`📅 日曆範圍: ${formatDate(startDate)} 到 ${formatDate(endDate)}`)
 
     // 建立日期陣列
     const dates = []
-    const maxDays = 30
+    const maxDays = 35
 
-    for (let date = new Date(startDate), dayCount = 0; date <= endDate && dayCount < maxDays; date.setDate(date.getDate() + 1), dayCount++) {
-      dates.push(new Date(date))
+    for (let date = new Date(startDate), dayCount = 0;
+         date <= endDate && dayCount < maxDays;
+         date.setDate(date.getDate() + 1), dayCount++) {
+           const currentDate = new Date(date)
+
+           // 🔥 條件：1. 屬於顯示的月份 2. 不是未來日期 3. API 有資料的日期
+           const isDisplayMonth = currentDate.getMonth() === displayMonth
+             && currentDate.getFullYear() === displayYear
+           const isNotFuture = currentDate <= today
+
+           if (isDisplayMonth && isNotFuture) {
+             dates.push(currentDate)
+             console.log(`📅 加入: ${formatDate(currentDate)}`)
+           } else if (currentDate > today) {
+             console.log(`⚠️ 跳過未來日期: ${formatDate(currentDate)}`)
+           } else if (!isDisplayMonth) {
+             console.log(`⚠️ 跳過其他月份: ${formatDate(currentDate)}`)
+           }
+         }
+
+    console.log(`📅 有效日期數量: ${dates.length}`)
+
+    // 如果沒有有效日期，直接返回
+    if (dates.length === 0) {
+      events.value = []
+      console.log('📅 沒有有效日期')
+      return
     }
-
-    console.log(`📅 準備並行載入 ${dates.length} 天的資料`)
 
     // 並行載入所有日期
     const results = await Promise.allSettled(
@@ -286,7 +314,7 @@
               allDay: true,
               category: news.categoryName,
               postDate: news.post_date,
-              needsContent: true, // 🔥 修正2：統一加入此屬性
+              needsContent: true,
             })
           }
           console.log(`✅ ${formatDate(currentDate)}: 找到 ${allDayNews.length} 則新聞`)
