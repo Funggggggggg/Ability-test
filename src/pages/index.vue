@@ -96,13 +96,44 @@
             ref="calendar"
             v-model="value"
             :events="events"
+            style="overflow: visible;"
             @click:event="handleEventClick"
           />
-          <!-- :event-height="40" -->
-          <!-- :view-mode="type" -->
         </v-sheet>
       </v-col>
     </v-row>
+
+    <!-- 彈跳視窗 -->
+    <v-dialog v-model="dialog" max-width="500">
+      <v-card>
+        <v-card-title class="d-flex justify-space-between align-center">
+          <span>{{ selectedEvent?.category }}</span>
+          <v-btn icon="mdi-close" size="small" variant="text" @click="dialog = false" />
+        </v-card-title>
+
+        <v-card-text>
+          <h3>{{ selectedEvent?.title }}</h3>
+          <span>{{ selectedEvent?.category }}</span>
+          <p>發布日期：{{ selectedEvent?.postDate }}</p>
+
+          <!-- <div v-if="newsContent">
+            <p>{{ newsContent }}</p>
+          </div>
+          <div v-else-if="loadingContent" class="text-center py-4">
+            <v-progress-circular indeterminate size="24" />
+            <span class="ml-2">載入中...</span>
+          </div>
+          <div v-else>
+            <v-btn color="primary" @click="loadNewsContent">載入完整內容</v-btn>
+          </div> -->
+        </v-card-text>
+
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="dialog = false">關閉</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-container>
 </template>
 <script setup>
@@ -127,6 +158,12 @@
   const events = ref([])
   const colors = ref(['blue', 'indigo', 'deep-purple', 'cyan', 'green', 'orange', 'grey darken-1'])
   const adapter = useDate()
+
+  // 彈跳視窗變數
+  const dialog = ref(false)
+  const selectedEvent = ref(null)
+  // const newsContent = ref('')
+  // const loadingContent = ref(false)
 
   // ==================
   // 2. 計算屬性
@@ -153,8 +190,13 @@
   // ===================
 
   // 日期格式化
+  // 使用 toISOString() 會轉換為 UTC 時間 => 要加 8 小時
+  // 台灣時間：2025-07-01 08:00 // UTC 時間：2025-07-01 00:00
   const formatDate = date => {
-    return date.toISOString().split('T')[0]
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
   }
 
   // ===================
@@ -265,7 +307,8 @@
     for (let date = new Date(startDate), dayCount = 0;
          date <= endDate && dayCount < maxDays;
          date.setDate(date.getDate() + 1), dayCount++) {
-           const currentDate = new Date(date)
+           // 🔥 重要修正：建立純日期物件，避免時區問題
+           const currentDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
 
            // 🔥 條件：1. 屬於顯示的月份 2. 不是未來日期 3. API 有資料的日期
            const isDisplayMonth = currentDate.getMonth() === displayMonth
@@ -360,35 +403,85 @@
     selectedCategories.value = allSelected.value ? [] : [...availableCategories.value]
   }
 
-  // 點擊時才載入完整內容
-  const handleEventClick = async event => {
-    console.log('📰 點擊事件:', event)
+  // FIXME 點擊時才載入完整內容 => 原生 DOM 事件轉日曆事件 => 解構賦值
+  const handleEventClick = (nativeEvent, eventWrapper) => {
+    console.log('📰 點擊事件:', eventWrapper?.event)
 
-    if (event.needsContent) {
-      console.log('📰 載入完整新聞內容...')
+    const event = eventWrapper?.event
 
-      try {
-        // 載入完整新聞內容
-        const keywordGroupId = categoryMapping[event.category]
-        const fullNews = await fetchSingleDayNews(keywordGroupId, event.start)
-
-        // 找到對應的新聞
-        const newsDetail = fullNews.find(news => news.id === event.id)
-
-        if (newsDetail && newsDetail.content) {
-          alert(`新聞標題: ${event.title}\n分類: ${event.category}\n發布日期: ${event.postDate}\n\n內容: ${newsDetail.content}`)
-        } else {
-          alert(`新聞標題: ${event.title}\n分類: ${event.category}\n發布日期: ${event.postDate}\n\n(無詳細內容)`)
-        }
-      } catch (error) {
-        console.error('載入新聞詳情失敗:', error)
-        alert(`新聞標題: ${event.title}\n分類: ${event.category}\n發布日期: ${event.postDate}\n\n(載入內容時發生錯誤)`)
-      }
-    } else {
-      alert(`新聞標題: ${event.title}\n分類: ${event.category}\n發布日期: ${event.postDate}`)
+    if (!event || !event.id) {
+      console.error('❌ 無效的日曆事件')
+      return
     }
+
+    console.log('✅ 成功取得事件:', event)
+    console.log('✅ 事件ID:', event.id)
+    console.log('✅ 事件標題:', event.title)
+    console.log('✅ 事件分類:', event.category)
+
+    selectedEvent.value = event
+    dialog.value = true
   }
 
+  //     try {
+  //       // 載入完整新聞內容
+  //       const keywordGroupId = categoryMapping[event.category]
+  //       const fullNews = await fetchSingleDayNews(keywordGroupId, event.start)
+
+  //       // 找到對應的新聞
+  //       const newsDetail = fullNews.find(news => news.id === event.id)
+
+  //       if (newsDetail && newsDetail.content) {
+  //         alert(`新聞標題: ${event.title}\n分類: ${event.category}\n發布日期: ${event.postDate}\n\n內容: ${newsDetail.content}`)
+  //       } else {
+  //         alert(`新聞標題: ${event.title}\n分類: ${event.category}\n發布日期: ${event.postDate}\n\n(無詳細內容)`)
+  //       }
+  //     } catch (error) {
+  //       console.error('載入新聞詳情失敗:', error)
+  //       alert(`新聞標題: ${event.title}\n分類: ${event.category}\n發布日期: ${event.postDate}\n\n(載入內容時發生錯誤)`)
+  //     }
+  //   } else {
+  //     alert(`新聞標題: ${event.title}\n分類: ${event.category}\n發布日期: ${event.postDate}`)
+  //   }
+
+  // 載入內容函數
+
+  // const loadNewsContent = async () => {
+  //   console.log('🔍 開始載入內容')
+  //   console.log('🔍 selectedEvent:', selectedEvent.value)
+
+  //   if (!selectedEvent.value) {
+  //     console.error('❌ selectedEvent 是空的')
+  //     return
+  //   }
+
+  //   console.log('🔍 事件分類:', selectedEvent.value.category)
+  //   console.log('🔍 事件日期:', selectedEvent.value.start)
+  //   console.log('🔍 事件ID:', selectedEvent.value.id)
+
+  //   loadingContent.value = true
+
+  //   try {
+  //     const keywordGroupId = categoryMapping[selectedEvent.value.category]
+  //     const fullNews = await fetchSingleDayNews(keywordGroupId, selectedEvent.value.start)
+  //     const newsDetail = fullNews.find(news => news.id === selectedEvent.value.id)
+
+  //     if (newsDetail) {
+  //       newsContent.value = newsDetail.content || '無內容'
+  //       console.log('✅ 內容載入成功:', newsContent.value.slice(0, 100))
+  //     } else {
+  //       newsContent.value = '找不到對應新聞'
+  //       console.log('❌ 找不到對應的新聞')
+  //     }
+
+  //     newsContent.value = newsDetail?.content || '無法載入新聞內容'
+  //   } catch (error) {
+  //     console.error('載入失敗:', error)
+  //     newsContent.value = '載入內容時發生錯誤'
+  //   } finally {
+  //     loadingContent.value = false
+  //   }
+  // }
   // ====================
   // 8. 監聽器
   // ====================
